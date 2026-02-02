@@ -2,11 +2,11 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\Exceptions\CodePathNotSupported;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Schema\AbstractAsset;
 use Doctrine\DBAL\Tools\DsnParser;
-use Smolblog\Foundation\Exceptions\CodePathNotSupported;
 
 /**
  * Store the database connection and table prefix.
@@ -55,7 +55,7 @@ class DatabaseEnvironment {
 						$assetName = $assetName->getName(); // @codeCoverageIgnore
 					}
 					return str_starts_with($assetName, $tablePrefix);
-				}
+				},
 			);
 		}
 	}

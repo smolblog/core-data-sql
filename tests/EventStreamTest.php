@@ -2,20 +2,22 @@
 
 namespace Smolblog\CoreDataSql;
 
-require_once __DIR__ . '/_base.php';
-
+use Cavatappi\Foundation\DomainEvent\DomainEvent;
+use Cavatappi\Foundation\DomainEvent\DomainEventKit;
+use Cavatappi\Foundation\Fields\Markdown;
+use Cavatappi\Infrastructure\Serialization\SerializationService;
+use Crell\Serde\Attributes\Field;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use Ramsey\Uuid\UuidInterface;
 use Smolblog\Core\Channel\Entities\BasicChannel;
-use Smolblog\Core\Channel\Entities\Channel;
 use Smolblog\Core\Channel\Events\ChannelSaved;
-use Smolblog\Core\Channel\Events\ContentPushedToChannel;
 use Smolblog\Core\Connection\Entities\Connection;
 use Smolblog\Core\Connection\Events\ConnectionEstablished;
 use Smolblog\Core\Content\Events\ContentCreated;
-use Smolblog\Foundation\Value\Fields\Markdown;
 use Smolblog\Core\Content\Types\Note\Note;
 use Smolblog\CoreDataSql\Test\DataTestBase;
-use Smolblog\Foundation\Value\Messages\DomainEvent;
 
+#[AllowMockObjectsWithoutExpectations]
 final class EventStreamTest extends DataTestBase {
 	public function testEventPersistence() {
 		$env = $this->app->container->get(DatabaseEnvironment::class);
@@ -53,20 +55,33 @@ final class EventStreamTest extends DataTestBase {
 				userId: $userId,
 				entityId: $contentId,
 			),
-			new readonly class(
+			new class (
 				userId: $userId,
 				aggregateId: $siteId,
-				processId: $this->randomId()
-			) extends DomainEvent {}
+				processId: $this->randomId(),
+			) implements DomainEvent {
+				use DomainEventKit;
+				public function __construct(
+					public readonly UuidInterface $userId,
+					public readonly UuidInterface $aggregateId,
+					public readonly UuidInterface $processId,
+				) {
+					$this->setIdAndTime(null, null);
+				}
+				#[Field(exclude: true)]
+				public null $entityId { get => null; }
+			},
 		];
 
-		foreach($expected as $event) {
+		foreach ($expected as $event) {
 			$this->app->dispatch($event);
 		}
 
+		$serde = $this->app->container->get(SerializationService::class);
+
 		$this->assertEquals(
-			array_map(fn($evt) => json_encode($evt), $expected),
-			$db->fetchFirstColumn('SELECT event_obj FROM ' . $env->tableName('event_stream'))
+			array_map(fn($evt) => $serde->toJson($evt), $expected),
+			$db->fetchFirstColumn('SELECT event_obj FROM ' . $env->tableName('event_stream')),
 		);
 	}
 }

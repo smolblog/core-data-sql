@@ -2,6 +2,7 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\Service;
 use Doctrine\DBAL\Query\QueryBuilder as DBALQueryBuilder;
 
 /**
@@ -15,7 +16,7 @@ use Doctrine\DBAL\Query\QueryBuilder as DBALQueryBuilder;
  * - An `upsert` method that will update a record with the given criteria OR create it if it doesn't exist.
  * - Somehow filtering the table names in a DBAL QueryBuilder???
  */
-class DatabaseService {
+class DatabaseService implements Service {
 	/**
 	 * Create the service.
 	 *
@@ -25,8 +26,7 @@ class DatabaseService {
 	public function __construct(
 		private DatabaseEnvironment $env,
 		private SchemaRegistry $schema,
-	) {
-	}
+	) {}
 
 	/**
 	 * Prefix the given table name with the environment's prefix.

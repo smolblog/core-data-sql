@@ -2,17 +2,15 @@
 
 namespace Smolblog\CoreDataSql;
 
-require_once __DIR__ . '/_base.php';
-
-use Smolblog\Core\Channel\Entities\MediaChannelEntry;
-use Smolblog\Core\Channel\Events\MediaPushedToChannel;
+use Cavatappi\Infrastructure\Serialization\SerializationService;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Smolblog\Core\Media\Entities\Media;
 use Smolblog\Core\Media\Entities\MediaType;
 use Smolblog\Core\Media\Events\{MediaCreated, MediaAttributesUpdated, MediaDeleted};
 use Smolblog\CoreDataSql\Test\DataTestBase;
-use Smolblog\Foundation\Value\Fields\Url;
 use stdClass;
 
+#[AllowMockObjectsWithoutExpectations]
 final class MediaProjectionTest extends DataTestBase {
 	public function testMediaCreated() {
 		$projection = $this->app->container->get(MediaProjection::class);
@@ -33,7 +31,7 @@ final class MediaProjectionTest extends DataTestBase {
 		$this->assertNull($projection->mediaById($media->id));
 		$this->app->dispatch($event);
 		$this->assertTrue($projection->hasMediaWithId($media->id));
-		$this->assertObjectEquals($media, $projection->mediaById($media->id) ?? new stdClass());
+		$this->assertValueObjectEquals($media, $projection->mediaById($media->id));
 	}
 
 	public function testMediaUpdated() {
@@ -52,7 +50,7 @@ final class MediaProjectionTest extends DataTestBase {
 			fileDetails: ['one' => 2],
 		);
 		$newMedia = $oldMedia->with(
-			title: 'i said hey'
+			title: 'i said hey',
 		);
 		$event = new MediaAttributesUpdated(
 			aggregateId: $oldMedia->siteId,
@@ -66,10 +64,10 @@ final class MediaProjectionTest extends DataTestBase {
 			'site_uuid' => $oldMedia->siteId,
 			'media_obj' => json_encode($oldMedia),
 		]);
-		$this->assertObjectEquals($oldMedia, $projection->mediaById($oldMedia->id) ?? new stdClass());
+		$this->assertValueObjectEquals($oldMedia, $projection->mediaById($oldMedia->id));
 
 		$this->app->dispatch($event);
-		$this->assertObjectEquals($newMedia, $projection->mediaById($oldMedia->id) ?? new stdClass());
+		$this->assertValueObjectEquals($newMedia, $projection->mediaById($oldMedia->id));
 	}
 
 	public function testMediaDeleted() {
@@ -124,7 +122,7 @@ final class MediaProjectionTest extends DataTestBase {
 				aggregateId: $missingMedia->siteId,
 				userId: $missingMedia->userId,
 				entityId: $missingMedia->id,
-			)
+			),
 		);
 		$this->assertFalse($projection->hasMediaWithId($missingMedia->id));
 	}

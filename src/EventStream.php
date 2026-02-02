@@ -2,12 +2,12 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\DomainEvent\DomainEvent;
+use Cavatappi\Foundation\DomainEvent\EventListener;
+use Cavatappi\Foundation\DomainEvent\EventListenerService;
+use Cavatappi\Infrastructure\Serialization\SerializationService;
 use DateTimeZone;
-use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\Schema;
-use Smolblog\Foundation\Service\Event\EventListener;
-use Smolblog\Foundation\Service\Event\EventListenerService;
-use Smolblog\Foundation\Value\Messages\DomainEvent;
 
 /**
  * Store events for playback later.
@@ -42,10 +42,13 @@ class EventStream implements EventListenerService, DatabaseTableHandler {
 	/**
 	 * Create the service.
 	 *
-	 * @param DatabaseService $db Working database connection.
+	 * @param DatabaseService      $db    Working database connection.
+	 * @param SerializationService $serde Configured (de)serialization service.
 	 */
-	public function __construct(private DatabaseService $db) {
-	}
+	public function __construct(
+		private DatabaseService $db,
+		private SerializationService $serde,
+	) {}
 
 	/**
 	 * Persist a DomainEvent.
@@ -56,13 +59,13 @@ class EventStream implements EventListenerService, DatabaseTableHandler {
 	#[EventListener]
 	public function onDomainEvent(DomainEvent $event) {
 		$this->db->insert('event_stream', [
-				'event_uuid' => $event->id,
-				'timestamp' => $event->timestamp->object->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u'),
-				'user_uuid' => $event->userId,
-				'aggregate_uuid' => $event->aggregateId,
-				'entity_uuid' => $event->entityId,
-				'process_uuid' => $event->processId,
-				'event_obj' => json_encode($event),
+			'event_uuid' => $event->id,
+			'timestamp' => $event->timestamp->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s.u'),
+			'user_uuid' => $event->userId,
+			'aggregate_uuid' => $event->aggregateId,
+			'entity_uuid' => $event->entityId,
+			'process_uuid' => $event->processId,
+			'event_obj' => $this->serde->toJson($event),
 		]);
 	}
 }

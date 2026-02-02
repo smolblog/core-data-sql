@@ -2,13 +2,15 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\DomainEvent\EventListenerService;
+use Cavatappi\Foundation\DomainEvent\ProjectionListener;
+use Cavatappi\Foundation\Factories\UuidFactory;
+use Cavatappi\Infrastructure\Serialization\SerializationService;
 use Doctrine\DBAL\Schema\Schema;
+use Ramsey\Uuid\UuidInterface;
 use Smolblog\Core\Channel\Data\ChannelRepo;
 use Smolblog\Core\Channel\Entities\Channel;
 use Smolblog\Core\Channel\Events\{ChannelAddedToSite, ChannelDeleted, ChannelSaved};
-use Smolblog\Foundation\Service\Event\EventListenerService;
-use Smolblog\Foundation\Service\Event\ProjectionListener;
-use Smolblog\Foundation\Value\Fields\Identifier;
 
 /**
  * Store and retrieve Content objects.
@@ -49,18 +51,21 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 	/**
 	 * Create the service.
 	 *
-	 * @param DatabaseService $db Working database connection.
+	 * @param DatabaseService      $db    Working database connection.
+	 * @param SerializationService $serde Configured (de)serialization service.
 	 */
-	public function __construct(private DatabaseService $db) {
-	}
+	public function __construct(
+		private DatabaseService $db,
+		private SerializationService $serde,
+	) {}
 
 	/**
 	 * Get a Channel.
 	 *
-	 * @param Identifier $channelId ID of the Channel.
+	 * @param UuidInterface $channelId ID of the Channel.
 	 * @return Channel|null
 	 */
-	public function channelById(Identifier $channelId): ?Channel {
+	public function channelById(UuidInterface $channelId): ?Channel {
 		$query = $this->db->createQueryBuilder();
 		$query
 			->select('channel_obj')
@@ -73,18 +78,18 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 		}
 
 		// This has to do with different DB engines which we cannot currently test.
-		return is_string($result) ?
-			Channel::fromJson($result) :
-			Channel::deserializeValue($result); // @codeCoverageIgnore
+		return is_string($result)
+			? $this->serde->fromJson($result, as: Channel::class)
+			: $this->serde->fromArray($result, as: Channel::class); // @codeCoverageIgnore
 	}
 
 	/**
 	 * Get all Channels linked to a particular Connection.
 	 *
-	 * @param Identifier $connectionId ID of Connection in question.
+	 * @param UuidInterface $connectionId ID of Connection in question.
 	 * @return Channel[]
 	 */
-	public function channelsForConnection(Identifier $connectionId): array {
+	public function channelsForConnection(UuidInterface $connectionId): array {
 		$query = $this->db->createQueryBuilder();
 		$query
 			->select('channel_obj')
@@ -94,7 +99,7 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 		$results = $query->fetchFirstColumn();
 
 		return array_map(
-			fn($res) => is_string($res) ? Channel::fromJson($res) : Channel::deserializeValue($res),
+			fn($res) => is_string($res) ? $this->serde->fromJson($res, as: Channel::class) : $this->serde->fromArray($res, as: Channel::class),
 			$results,
 		);
 	}
@@ -102,21 +107,21 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 	/**
 	 * Get all Channels linked to a Site.
 	 *
-	 * @param Identifier $siteId ID of Site to check.
+	 * @param UuidInterface $siteId ID of Site to check.
 	 * @return Channel[]
 	 */
-	public function channelsForSite(Identifier $siteId): array {
+	public function channelsForSite(UuidInterface $siteId): array {
 		$query = $this->db->createQueryBuilder();
-		$query->
-			select('c.channel_obj')->
-			from('channels', 'c')->
-			innerJoin('c', 'channels_sites', 'cs', 'c.channel_uuid = cs.channel_uuid')->
-			where('cs.site_uuid = ?')->
-			setParameter(0, $siteId);
+		$query
+			->select('c.channel_obj')
+			->from('channels', 'c')
+			->innerJoin('c', 'channels_sites', 'cs', 'c.channel_uuid = cs.channel_uuid')
+			->where('cs.site_uuid = ?')
+			->setParameter(0, $siteId);
 		$results = $query->fetchFirstColumn();
 
 		return array_map(
-			fn($res) => is_string($res) ? Channel::fromJson($res) : Channel::deserializeValue($res),
+			fn($res) => is_string($res) ? $this->serde->fromJson($res, as: Channel::class) : $this->serde->fromArray($res, as: Channel::class),
 			$results,
 		);
 	}
@@ -124,11 +129,11 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 	/**
 	 * Check if a given site can push to a given channel.
 	 *
-	 * @param Identifier $siteId    ID of site in question.
-	 * @param Identifier $channelId ID of channel in question.
+	 * @param UuidInterface $siteId    ID of site in question.
+	 * @param UuidInterface $channelId ID of channel in question.
 	 * @return boolean
 	 */
-	public function siteCanUseChannel(Identifier $siteId, Identifier $channelId): bool {
+	public function siteCanUseChannel(UuidInterface $siteId, UuidInterface $channelId): bool {
 		$query = $this->db->createQueryBuilder();
 		$query->select('1')
 			->from('channels_sites')
@@ -160,7 +165,7 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 		$data = [
 			'channel_uuid' => $event->entityId,
 			'connection_uuid' => $event->channel->connectionId,
-			'channel_obj' => json_encode($event->channel),
+			'channel_obj' => $this->serde->toJson($event->channel),
 		];
 
 		if ($dbid) {
@@ -180,8 +185,8 @@ class ChannelProjection implements ChannelRepo, EventListenerService, DatabaseTa
 	public function onChannelAddedToSite(ChannelAddedToSite $event): void {
 		if (
 			$this->siteCanUseChannel(
-				siteId: $event->aggregateId ?? Identifier::nil(),
-				channelId: $event->entityId ?? Identifier::nil()
+				siteId: $event->aggregateId ?? UuidFactory::nil(),
+				channelId: $event->entityId ?? UuidFactory::nil(),
 			)
 		) {
 			return;

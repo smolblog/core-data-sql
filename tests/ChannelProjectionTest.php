@@ -2,20 +2,20 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\Factories\UuidFactory;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Smolblog\Core\Channel\Entities\BasicChannel;
 use Smolblog\Core\Channel\Events\ChannelAddedToSite;
 use Smolblog\Core\Channel\Events\ChannelDeleted;
 use Smolblog\Core\Channel\Events\ChannelSaved;
 use Smolblog\CoreDataSql\Test\DataTestBase;
-use Smolblog\Foundation\Value\Fields\Identifier;
 use stdClass;
 
-require_once __DIR__ . '/_base.php';
-
+#[AllowMockObjectsWithoutExpectations]
 final class ChannelProjectionTest extends DataTestBase {
 	private function setUpTestChannels() {
-		$commonSite = Identifier::fromString('dbbf45e0-08c8-4422-829d-742b1415f4dd');
-		$commonConnection = Identifier::fromString('2b41ef39-452d-4bfb-a15a-d6c40b74c5dd');
+		$commonSite = UuidFactory::fromString('dbbf45e0-08c8-4422-829d-742b1415f4dd');
+		$commonConnection = UuidFactory::fromString('2b41ef39-452d-4bfb-a15a-d6c40b74c5dd');
 
 		$channels = [
 			'none' => new BasicChannel(
@@ -90,7 +90,7 @@ final class ChannelProjectionTest extends DataTestBase {
 		foreach (['sameSite','sameConnectionSameSite','otherConnectionSameSite'] as $key) {
 			$this->app->dispatch(new ChannelAddedToSite(
 				aggregateId: $commonSite,
-				entityId: $channels[$key]->getId(),
+				entityId: $channels[$key]->id,
 				userId: $this->randomId(),
 			));
 		}
@@ -98,13 +98,13 @@ final class ChannelProjectionTest extends DataTestBase {
 		foreach (['otherSite','sameConnectionOtherSite','otherConnectionOtherSite'] as $key) {
 			$this->app->dispatch(new ChannelAddedToSite(
 				aggregateId: $this->randomId(),
-				entityId: $channels[$key]->getId(),
+				entityId: $channels[$key]->id,
 				userId: $this->randomId(),
 			));
 		}
 
 		return $channels;
- 	}
+	}
 
 	public function testChannelSaved() {
 		$projection = $this->app->container->get(ChannelProjection::class);
@@ -121,20 +121,20 @@ final class ChannelProjectionTest extends DataTestBase {
 			userId: $this->randomId(),
 		);
 
-		$this->assertNull($projection->channelById($channel->getId()));
+		$this->assertNull($projection->channelById($channel->id));
 
 		$this->app->dispatch(new ChannelSaved(
 			channel: $channel,
 			userId: $this->randomId(),
 		));
-		$this->assertObjectEquals($channel, $projection->channelById($channel->getId()) ?? new stdClass());
+		$this->assertValueObjectEquals($channel, $projection->channelById($channel->id));
 
 		$newChannel = $channel->with(details: ['abc' => 456]);
 		$this->app->dispatch(new ChannelSaved(
 			channel: $newChannel,
 			userId: $this->randomId(),
 		));
-		$this->assertObjectEquals($newChannel, $projection->channelById($channel->getId()) ?? new stdClass());
+		$this->assertValueObjectEquals($newChannel, $projection->channelById($channel->id));
 	}
 
 	public function testChannelAddedToSite() {
@@ -173,13 +173,13 @@ final class ChannelProjectionTest extends DataTestBase {
 			channel: $channel,
 			userId: $this->randomId(),
 		));
-		$this->assertObjectEquals($channel, $projection->channelById($channel->getId()) ?? new stdClass());
+		$this->assertValueObjectEquals($channel, $projection->channelById($channel->id));
 
 		$this->app->dispatch(new ChannelDeleted(
-			entityId: $channel->getId(),
+			entityId: $channel->id,
 			userId: $this->randomId(),
 		));
-		$this->assertNull($projection->channelById($channel->getId()));
+		$this->assertNull($projection->channelById($channel->id));
 	}
 
 	public function testChannelsForConnection() {
@@ -191,7 +191,7 @@ final class ChannelProjectionTest extends DataTestBase {
 			$channels['sameConnectionSameSite'],
 			$channels['sameConnectionOtherSite'],
 		];
-		$connectionId = Identifier::fromString('2b41ef39-452d-4bfb-a15a-d6c40b74c5dd');
+		$connectionId = UuidFactory::fromString('2b41ef39-452d-4bfb-a15a-d6c40b74c5dd');
 
 		$this->assertEquals($expected, $projection->channelsForConnection($connectionId));
 	}
@@ -205,8 +205,11 @@ final class ChannelProjectionTest extends DataTestBase {
 			$channels['sameConnectionSameSite'],
 			$channels['otherConnectionSameSite'],
 		];
-		$siteId = Identifier::fromString('dbbf45e0-08c8-4422-829d-742b1415f4dd');
+		$siteId = UuidFactory::fromString('dbbf45e0-08c8-4422-829d-742b1415f4dd');
 
-		$this->assertEquals($expected, $projection->channelsForSite($siteId));
+		$actual = $projection->channelsForSite($siteId);
+		foreach ($expected as $ind => $expectedChannel) {
+			$this->assertValueObjectEquals($expectedChannel, $actual[$ind]);
+		}
 	}
 }

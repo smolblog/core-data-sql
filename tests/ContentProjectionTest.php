@@ -2,8 +2,11 @@
 
 namespace Smolblog\CoreDataSql;
 
-require_once __DIR__ . '/_base.php';
-
+use Cavatappi\Foundation\Factories\HttpMessageFactory;
+use Cavatappi\Foundation\Factories\UuidFactory;
+use Cavatappi\Foundation\Fields\Markdown;
+use Cavatappi\Infrastructure\Serialization\SerializationService;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Smolblog\Core\Channel\Entities\ContentChannelEntry;
 use Smolblog\Core\Channel\Events\ContentPushedToChannel;
 use Smolblog\Core\Channel\Events\ContentPushSucceeded;
@@ -13,13 +16,19 @@ use Smolblog\Core\Content\Events\ContentCreated;
 use Smolblog\Core\Content\Events\ContentDeleted;
 use Smolblog\Core\Content\Events\ContentUpdated;
 use Smolblog\Core\Content\Extensions\Tags\Tags;
-use Smolblog\Foundation\Value\Fields\Markdown;
 use Smolblog\Core\Content\Types\Note\Note;
 use Smolblog\CoreDataSql\Test\DataTestBase;
-use Smolblog\Foundation\Value\Fields\Url;
 use stdClass;
 
+#[AllowMockObjectsWithoutExpectations]
 final class ContentProjectionTest extends DataTestBase {
+	private SerializationService $serde;
+
+	protected function setUp(): void {
+		parent::setUp();
+		$this->serde = $this->app->container->get(SerializationService::class);
+	}
+
 	public function testContentList() {
 		$projection = $this->app->container->get(ContentProjection::class);
 		$env = $this->app->container->get(DatabaseEnvironment::class);
@@ -31,35 +40,39 @@ final class ContentProjectionTest extends DataTestBase {
 		$userB = $this->randomId();
 
 		$site1userA = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *is* a test.')),
 			siteId: $site1,
 			userId: $userA,
 			extensions: [
-				'tags' => new Tags(['test']),
+				new Tags(['test']),
 			],
 		);
 		$site1userB = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *is* a test.')),
 			siteId: $site1,
 			userId: $userB,
 			extensions: [
-				'tags' => new Tags(['test']),
+				new Tags(['test']),
 			],
 		);
 		$site2userA = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *is* a test.')),
 			siteId: $site2,
 			userId: $userA,
 			extensions: [
-				'tags' => new Tags(['test']),
+				new Tags(['test']),
 			],
 		);
 		$site2userB = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *is* a test.')),
 			siteId: $site2,
 			userId: $userB,
 			extensions: [
-				'tags' => new Tags(['test']),
+				new Tags(['test']),
 			],
 		);
 
@@ -68,28 +81,34 @@ final class ContentProjectionTest extends DataTestBase {
 				'content_uuid' => $toInsert->id,
 				'site_uuid' => $toInsert->siteId,
 				'user_uuid' => $toInsert->userId,
-				'content_obj' => json_encode($toInsert),
+				'content_obj' => $this->serde->toJson($toInsert),
 			]);
-			$this->assertObjectEquals($toInsert, $projection->contentById($toInsert->id) ?? new stdClass());
+			$this->assertValueObjectEquals($toInsert, $projection->contentById($toInsert->id));
 		}
 
 		$this->assertJsonStringEqualsJsonString(
-			json_encode([$site1userB, $site1userA]), json_encode($projection->contentList(forSite: $site1))
+			json_encode([$site1userB, $site1userA]),
+			json_encode($projection->contentList(forSite: $site1)),
 		);
 		$this->assertJsonStringEqualsJsonString(
-			json_encode([$site1userA]), json_encode($projection->contentList(forSite: $site1, ownedByUser: $userA))
+			json_encode([$site1userA]),
+			json_encode($projection->contentList(forSite: $site1, ownedByUser: $userA)),
 		);
 		$this->assertJsonStringEqualsJsonString(
-			json_encode([$site1userB]), json_encode($projection->contentList(forSite: $site1, ownedByUser: $userB))
+			json_encode([$site1userB]),
+			json_encode($projection->contentList(forSite: $site1, ownedByUser: $userB)),
 		);
 		$this->assertJsonStringEqualsJsonString(
-			json_encode([$site2userB, $site2userA]), json_encode($projection->contentList(forSite: $site2))
+			json_encode([$site2userB, $site2userA]),
+			json_encode($projection->contentList(forSite: $site2)),
 		);
 		$this->assertJsonStringEqualsJsonString(
-			json_encode([$site2userA]), json_encode($projection->contentList(forSite: $site2, ownedByUser: $userA))
+			json_encode([$site2userA]),
+			json_encode($projection->contentList(forSite: $site2, ownedByUser: $userA)),
 		);
 		$this->assertJsonStringEqualsJsonString(
-			json_encode([$site2userB]), json_encode($projection->contentList(forSite: $site2, ownedByUser: $userB))
+			json_encode([$site2userB]),
+			json_encode($projection->contentList(forSite: $site2, ownedByUser: $userB)),
 		);
 		$this->assertEmpty($projection->contentList(forSite: $this->randomId()));
 		$this->assertEmpty($projection->contentList(forSite: $site1, ownedByUser: $this->randomId()));
@@ -100,11 +119,12 @@ final class ContentProjectionTest extends DataTestBase {
 		$projection = $this->app->container->get(ContentProjection::class);
 
 		$content = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *is* a test.')),
 			siteId: $this->randomId(),
 			userId: $this->randomId(),
 			extensions: [
-				'tags' => new Tags(['test']),
+				new Tags(['test']),
 			],
 		);
 		$event = new ContentCreated(
@@ -119,7 +139,7 @@ final class ContentProjectionTest extends DataTestBase {
 		$this->assertNull($projection->contentById($content->id));
 		$this->app->dispatch($event);
 		$this->assertTrue($projection->hasContentWithId($content->id));
-		$this->assertObjectEquals($content, $projection->contentById($content->id) ?? new stdClass());
+		$this->assertValueObjectEquals($content, $projection->contentById($content->id));
 	}
 
 	public function testContentUpdated() {
@@ -128,17 +148,18 @@ final class ContentProjectionTest extends DataTestBase {
 		$db = $env->getConnection();
 
 		$oldContent = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *was* a test.')),
 			siteId: $this->randomId(),
 			userId: $this->randomId(),
 			extensions: [
-				'tags' => new Tags(['tops']),
+				new Tags(['tops']),
 			],
 		);
 		$newContent = $oldContent->with(
 			body: new Note(new Markdown('This *is* a test.')),
 			extensions: [
-				'tags' => new Tags(['test']),
+				new Tags(['test']),
 			],
 		);
 		$event = new ContentUpdated(
@@ -153,12 +174,12 @@ final class ContentProjectionTest extends DataTestBase {
 			'content_uuid' => $oldContent->id,
 			'site_uuid' => $oldContent->siteId,
 			'user_uuid' => $oldContent->userId,
-			'content_obj' => json_encode($oldContent),
+			'content_obj' => $this->serde->toJson($oldContent),
 		]);
-		$this->assertObjectEquals($oldContent, $projection->contentById($oldContent->id) ?? new stdClass());
+		$this->assertValueObjectEquals($oldContent, $projection->contentById($oldContent->id));
 
 		$this->app->dispatch($event);
-		$this->assertObjectEquals($newContent, $projection->contentById($oldContent->id) ?? new stdClass());
+		$this->assertValueObjectEquals($newContent, $projection->contentById($oldContent->id));
 	}
 
 	public function testContentDeleted() {
@@ -167,18 +188,19 @@ final class ContentProjectionTest extends DataTestBase {
 		$db = $env->getConnection();
 
 		$content = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *was* a test.')),
 			siteId: $this->randomId(),
 			userId: $this->randomId(),
 			extensions: [
-				'tags' => new Tags(['tops']),
+				new Tags(['tops']),
 			],
 		);
 		$db->insert($env->tableName('content'), [
 			'content_uuid' => $content->id,
 			'site_uuid' => $content->siteId,
 			'user_uuid' => $content->userId,
-			'content_obj' => json_encode($content),
+			'content_obj' => $this->serde->toJson($content),
 		]);
 		$this->assertTrue($projection->hasContentWithId($content->id));
 
@@ -197,32 +219,33 @@ final class ContentProjectionTest extends DataTestBase {
 		$db = $env->getConnection();
 
 		$content = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *was* a test.')),
 			siteId: $this->randomId(),
 			userId: $this->randomId(),
 			extensions: [
-				'tags' => new Tags(['tops']),
+				new Tags(['tops']),
 			],
 		);
 		$db->insert($env->tableName('content'), [
 			'content_uuid' => $content->id,
 			'site_uuid' => $content->siteId,
 			'user_uuid' => $content->userId,
-			'content_obj' => json_encode($content),
+			'content_obj' => $this->serde->toJson($content),
 		]);
-		$this->assertObjectEquals($content, $projection->contentById($content->id) ?? new stdClass());
+		$this->assertValueObjectEquals($content, $projection->contentById($content->id));
 
 		$event = new ContentCanonicalUrlSet(
-			url: new Url('https://test.smol.blog/note/this-was-a-test'),
+			url: HttpMessageFactory::uri('https://test.smol.blog/note/this-was-a-test'),
 			userId: $content->userId,
 			aggregateId: $content->siteId,
 			entityId: $content->id,
 		);
 		$this->app->dispatch($event);
 
-		$this->assertObjectEquals(
-			$content->with(canonicalUrl: new Url('https://test.smol.blog/note/this-was-a-test')),
-			$projection->contentById($content->id) ?? new stdClass()
+		$this->assertValueObjectEquals(
+			$content->with(canonicalUrl: HttpMessageFactory::uri('https://test.smol.blog/note/this-was-a-test')),
+			$projection->contentById($content->id),
 		);
 	}
 
@@ -232,21 +255,22 @@ final class ContentProjectionTest extends DataTestBase {
 		$db = $env->getConnection();
 
 		$contentBase = new Content(
+			id: $this->randomId(),
 			body: new Note(new Markdown('This *was* a test.')),
 			siteId: $this->randomId(),
 			userId: $this->randomId(),
 			extensions: [
-				'tags' => new Tags(['tops']),
+				new Tags(['tops']),
 			],
 		);
 
 		$entryOne = new ContentChannelEntry(
 			contentId: $contentBase->id,
 			channelId: $this->randomId(),
-			url: new Url('https://test.smol.blog/note/this-was-a-test'),
+			url: HttpMessageFactory::uri('https://test.smol.blog/note/this-was-a-test'),
 			details: ['wpid' => '1234'],
 		);
-		$contentOne = $contentBase->with(links: [$entryOne->getId()->toString() => $entryOne]);
+		$contentOne = $contentBase->with(links: [$entryOne]);
 		$eventOne = new ContentPushSucceeded(
 			contentId: $contentBase->id,
 			channelId: $entryOne->channelId,
@@ -256,6 +280,7 @@ final class ContentProjectionTest extends DataTestBase {
 			url: $entryOne->url,
 			details: $entryOne->details,
 		);
+		$this->assertValueObjectEquals($entryOne, $eventOne->getEntryObject());
 
 		$entryTwo = new ContentChannelEntry(
 			contentId: $contentBase->id,
@@ -263,25 +288,26 @@ final class ContentProjectionTest extends DataTestBase {
 			details: ['esid' => '1234'],
 		);
 		$contentTwo = $contentBase->with(links: [
-			$entryOne->getId()->toString() => $entryOne,
-			$entryTwo->getId()->toString() => $entryTwo,
+			$entryOne,
+			$entryTwo,
 		]);
 		$eventTwo = new ContentPushSucceeded(
-			contentId: $contentOne->id,
+			contentId: $contentBase->id,
 			channelId: $entryTwo->channelId,
 			userId: $contentBase->userId,
 			aggregateId: $contentBase->siteId,
 			processId: $this->randomId(),
 			details: $entryTwo->details,
 		);
+		$this->assertValueObjectEquals($entryTwo, $eventTwo->getEntryObject());
 
 		$entryThree = $entryOne->with(details: ['wpid' => '1234', 'edited' => true]);
 		$contentThree = $contentBase->with(links: [
-			$entryOne->getId()->toString() => $entryThree,
-			$entryTwo->getId()->toString() => $entryTwo,
+			$entryThree,
+			$entryTwo,
 		]);
 		$eventThree = new ContentPushSucceeded(
-			contentId: $contentTwo->id,
+			contentId: $contentBase->id,
 			channelId: $entryThree->channelId,
 			userId: $contentBase->userId,
 			aggregateId: $contentBase->siteId,
@@ -289,29 +315,31 @@ final class ContentProjectionTest extends DataTestBase {
 			url: $entryThree->url,
 			details: $entryThree->details,
 		);
+		$this->assertValueObjectEquals($entryThree, $eventThree->getEntryObject());
 
 		$db->insert($env->tableName('content'), [
 			'content_uuid' => $contentBase->id,
 			'site_uuid' => $contentBase->siteId,
 			'user_uuid' => $contentBase->userId,
-			'content_obj' => json_encode($contentBase),
+			'content_obj' => $this->serde->toJson($contentBase),
 		]);
-		$this->assertObjectEquals($contentBase, $projection->contentById($contentBase->id) ?? new stdClass());
+		$this->assertValueObjectEquals($contentBase, $projection->contentById($contentBase->id));
 
 		$this->app->dispatch($eventOne);
-		$this->assertObjectEquals($contentOne, $projection->contentById($contentBase->id) ?? new stdClass());
+		$this->assertValueObjectEquals($contentOne, $projection->contentById($contentBase->id));
 
 		$this->app->dispatch($eventTwo);
-		$this->assertObjectEquals($contentTwo, $projection->contentById($contentBase->id) ?? new stdClass());
+		$this->assertValueObjectEquals($contentTwo, $projection->contentById($contentBase->id));
 
 		$this->app->dispatch($eventThree);
-		$this->assertObjectEquals($contentThree, $projection->contentById($contentBase->id) ?? new stdClass());
+		$this->assertValueObjectEquals($contentThree, $projection->contentById($contentBase->id));
 	}
 
 	public function testItFailsSilentlyOnEditsIfContentDoesNotExist() {
 		$projection = $this->app->container->get(ContentProjection::class);
 
 		$missingContent = new Content(
+			id: $this->randomId(),
 			body: new Note(text: new Markdown('Is that a crab with a top hat and a monocle?')),
 			siteId: $this->randomId(),
 			userId: $this->randomId(),
@@ -324,17 +352,17 @@ final class ContentProjectionTest extends DataTestBase {
 				aggregateId: $missingContent->siteId,
 				userId: $missingContent->userId,
 				entityId: $missingContent->id,
-			)
+			),
 		);
 		$this->assertFalse($projection->hasContentWithId($missingContent->id));
 
 		$projection->onContentCanonicalUrlSet(
 			new ContentCanonicalUrlSet(
-				url: new Url('https://smol.blog/1234'),
+				url: HttpMessageFactory::uri('https://smol.blog/1234'),
 				aggregateId: $missingContent->siteId,
 				userId: $missingContent->userId,
 				entityId: $missingContent->id,
-			)
+			),
 		);
 		$this->assertFalse($projection->hasContentWithId($missingContent->id));
 
@@ -345,7 +373,7 @@ final class ContentProjectionTest extends DataTestBase {
 				userId: $missingContent->userId,
 				aggregateId: $missingContent->siteId,
 				processId: $this->randomId(),
-			)
+			),
 		);
 		$this->assertFalse($projection->hasContentWithId($missingContent->id));
 	}

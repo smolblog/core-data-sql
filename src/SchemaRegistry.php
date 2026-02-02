@@ -2,13 +2,14 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\Registry\Registry;
+use Cavatappi\Foundation\Service;
 use Doctrine\DBAL\Schema\Schema;
-use Smolblog\Foundation\Service\Registry\Registry;
 
 /**
  * Collect services that handle database tables to assist with creating/migrating schema.
  */
-class SchemaRegistry implements Registry {
+class SchemaRegistry implements Registry, Service {
 	/**
 	 * This registry is for DatabaseTableHandlers.
 	 *
@@ -23,8 +24,7 @@ class SchemaRegistry implements Registry {
 	 *
 	 * @param DatabaseEnvironment $env DB Connection and configuration.
 	 */
-	public function __construct(private DatabaseEnvironment $env) {
-	}
+	public function __construct(private DatabaseEnvironment $env) {}
 
 	/**
 	 * Store the handler services.
@@ -37,7 +37,7 @@ class SchemaRegistry implements Registry {
 		$expectedSchema = array_reduce(
 			array: $configuration,
 			callback: fn($schema, $srv) => $srv::addTableToSchema($schema, $this->env->tableName(...)),
-			initial: new Schema()
+			initial: new Schema(),
 		);
 
 		$expectedSchema
@@ -45,7 +45,7 @@ class SchemaRegistry implements Registry {
 			->addColumn('schema_version', 'string', ['length' => 32]);
 		$schemaVersion = md5(implode(
 			array: $expectedSchema->toSql($this->env->getConnection()->getDatabasePlatform()),
-			separator: ' '
+			separator: ' ',
 		));
 
 		if ($schemaVersion !== $this->getSchemaVersion()) {

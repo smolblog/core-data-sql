@@ -2,19 +2,19 @@
 
 namespace Smolblog\CoreDataSql;
 
+use Cavatappi\Foundation\Factories\UuidFactory;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Smolblog\Core\Connection\Entities\Connection;
 use Smolblog\Core\Connection\Events\ConnectionDeleted;
 use Smolblog\Core\Connection\Events\ConnectionEstablished;
 use Smolblog\Core\Connection\Events\ConnectionRefreshed;
 use Smolblog\CoreDataSql\Test\DataTestBase;
-use Smolblog\Foundation\Value\Fields\Identifier;
 use stdClass;
 
-require_once __DIR__ . '/_base.php';
-
+#[AllowMockObjectsWithoutExpectations]
 final class ConnectionProjectionTest extends DataTestBase {
 	public function setUpUserConnections() {
-		$userId = Identifier::fromString('6e648ea4-de43-45ad-9c5a-12eeaf9afd41');
+		$userId = UuidFactory::fromString('6e648ea4-de43-45ad-9c5a-12eeaf9afd41');
 
 		$connections = [
 			'sameUserOne' => new Connection(
@@ -22,28 +22,28 @@ final class ConnectionProjectionTest extends DataTestBase {
 				handler: 'test',
 				handlerKey: 'sameUserOne',
 				displayName: 'Same User One',
-				details: ['one' => 2]
+				details: ['one' => 2],
 			),
 			'otherUserOne' => new Connection(
 				userId: $this->randomId(),
 				handler: 'test',
 				handlerKey: 'otherUser',
 				displayName: 'Other User',
-				details: ['five' => 6]
+				details: ['five' => 6],
 			),
 			'sameUserTwo' => new Connection(
 				userId: $userId,
 				handler: 'other',
 				handlerKey: 'sameUserTwo',
 				displayName: 'Same User Two',
-				details: ['three' => 4]
+				details: ['three' => 4],
 			),
 			'otherUserTwo' => new Connection(
 				userId: $this->randomId(),
 				handler: 'other',
 				handlerKey: 'otherUserTwo',
 				displayName: 'Other User Two',
-				details: ['seven' => 8]
+				details: ['seven' => 8],
 			),
 		];
 
@@ -78,10 +78,10 @@ final class ConnectionProjectionTest extends DataTestBase {
 			userId: $connection->userId,
 		);
 
-		$this->assertNull($projection->connectionById($connection->getId()));
+		$this->assertNull($projection->connectionById($connection->id));
 
 		$this->app->dispatch($event);
-		$this->assertObjectEquals($connection, $projection->connectionById($connection->getId()) ?? new stdClass());
+		$this->assertValueObjectEquals($connection, $projection->connectionById($connection->id));
 
 		$newConnection = $connection->with(details: ['abc' => 456]);
 		$this->app->dispatch(new ConnectionEstablished(
@@ -91,7 +91,7 @@ final class ConnectionProjectionTest extends DataTestBase {
 			details: ['abc' => 456],
 			userId: $connection->userId,
 		));
-		$this->assertObjectEquals($newConnection, $projection->connectionById($connection->getId()) ?? new stdClass());
+		$this->assertValueObjectEquals($newConnection, $projection->connectionById($connection->id));
 	}
 
 	public function testConnectionRefreshed() {
@@ -110,16 +110,16 @@ final class ConnectionProjectionTest extends DataTestBase {
 			details: ['one' => 2],
 			userId: $connection->userId,
 		));
-		$this->assertObjectEquals($connection, $projection->connectionById($connection->getId()) ?? new stdClass());
+		$this->assertValueObjectEquals($connection, $projection->connectionById($connection->id));
 
 		$this->app->dispatch(new ConnectionRefreshed(
 			details: ['answer' => 42],
-			entityId: $connection->getId(),
+			entityId: $connection->id,
 			userId: $connection->userId,
 		));
-		$this->assertObjectEquals(
+		$this->assertValueObjectEquals(
 			$connection->with(details: ['answer' => 42]),
-			$projection->connectionById($connection->getId()) ?? new stdClass()
+			$projection->connectionById($connection->id),
 		);
 	}
 
@@ -134,38 +134,38 @@ final class ConnectionProjectionTest extends DataTestBase {
 			userId: $this->randomId(),
 		);
 		$this->app->dispatch($addEvent);
-		$this->assertObjectEquals(
+		$this->assertValueObjectEquals(
 			$addEvent->getConnectionObject(),
-			$projection->connectionById($addEvent->entityId ?? Identifier::nil()) ?? new stdClass()
+			$projection->connectionById($addEvent->entityId ?? UuidFactory::nil()),
 		);
 
 		$this->app->dispatch(new ConnectionDeleted(
-			entityId: $addEvent->entityId ?? Identifier::nil(),
+			entityId: $addEvent->entityId ?? UuidFactory::nil(),
 			userId: $addEvent->userId,
 		));
-		$this->assertNull($projection->connectionById($addEvent->entityId ?? Identifier::nil()));
+		$this->assertNull($projection->connectionById($addEvent->entityId ?? UuidFactory::nil()));
 	}
 
 	public function testConnectionBelongsToUser() {
 		$projection = $this->app->container->get(ConnectionProjection::class);
 		$connections = $this->setUpUserConnections();
-		$userId = Identifier::fromString('6e648ea4-de43-45ad-9c5a-12eeaf9afd41');
+		$userId = UuidFactory::fromString('6e648ea4-de43-45ad-9c5a-12eeaf9afd41');
 
 		$this->assertTrue($projection->connectionBelongsToUser(
-			connectionId: $connections['sameUserOne']->getId(),
+			connectionId: $connections['sameUserOne']->id,
 			userId: $userId,
 		));
 		$this->assertTrue($projection->connectionBelongsToUser(
-			connectionId: $connections['sameUserTwo']->getId(),
+			connectionId: $connections['sameUserTwo']->id,
 			userId: $userId,
 		));
 
 		$this->assertFalse($projection->connectionBelongsToUser(
-			connectionId: $connections['otherUserOne']->getId(),
+			connectionId: $connections['otherUserOne']->id,
 			userId: $userId,
 		));
 		$this->assertFalse($projection->connectionBelongsToUser(
-			connectionId: $connections['otherUserTwo']->getId(),
+			connectionId: $connections['otherUserTwo']->id,
 			userId: $userId,
 		));
 	}
@@ -173,7 +173,7 @@ final class ConnectionProjectionTest extends DataTestBase {
 	public function testConnectionsForUser() {
 		$projection = $this->app->container->get(ConnectionProjection::class);
 		$connections = $this->setUpUserConnections();
-		$userId = Identifier::fromString('6e648ea4-de43-45ad-9c5a-12eeaf9afd41');
+		$userId = UuidFactory::fromString('6e648ea4-de43-45ad-9c5a-12eeaf9afd41');
 
 		$expected = [$connections['sameUserOne'], $connections['sameUserTwo']];
 		$this->assertEquals($expected, $projection->connectionsForUser($userId));
